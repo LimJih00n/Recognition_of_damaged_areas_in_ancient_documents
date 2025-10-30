@@ -1,0 +1,18 @@
+# 문화재 손상 부위 감지 프로젝트 - 필수 패키지
+
+# 기본 이미지 처리
+opencv-python-headless>=4.12.0
+scikit-image>=0.25.2
+pillow>=12.0.0
+numpy>=2.2.6
+scipy>=1.16.2
+matplotlib>=3.10.7
+
+# DexiNed (딥러닝 edge detection)
+torch>=2.9.0
+torchvision>=0.24.0
+kornia>=0.8.1
+h5py>=3.15.1
+
+# SVG 변환
+# pypotrace (별도 설치 필요: https://github.com/flupke/pypotrace)

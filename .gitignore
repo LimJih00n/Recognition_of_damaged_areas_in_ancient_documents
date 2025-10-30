@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Large files and data
+datasets/
+results/
+*.tif
+*.tiff
+
+# Model checkpoints (large files)
+DexiNed/checkpoints/
+EdgeNAT/weights/
+pidinet/weights/
+*.pth
+*.pt
+*.ckpt
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+temp/
+
+# Test outputs
+test_output/
+
+# Scale config (user-specific)
+scale_config_example.json
+
+# Results (too large)
+results/
+
+# Archive experiments
+archive_old_experiments/
+
+# Test images
+*.png
+test_*.png
+original_*.png

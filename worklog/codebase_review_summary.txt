@@ -1,0 +1,41 @@
+## Codebase 재검토 완료 요약
+
+### 발견한 모든 hole extraction 스크립트 (21개)
+1. extract_whiteness_based.py - ⭐ 현재 사용 중
+2. extract_and_map_holes.py - LAB b-channel 단독
+3. extract_holes_smart_filter.py - LAB+HSV + 텍스처/밀도 필터
+4. extract_holes_hybrid.py - LAB + Edge
+5. extract_with_preprocessing.py - CLAHE + 전처리
+6. extract_holes_texture_contrast.py - 멀티스케일 분석
+7. extract_holes_with_edges.py
+8. extract_holes_gradient.py
+9. extract_holes_multilayer.py
+10. extract_holes_watershed.py
+11. extract_holes_2pass.py
+12. extract_holes_improved_v2.py
+13. extract_holes_improved_fast.py
+14. extract_holes_filtered.py
+15. extract_holes_color_based.py
+16. extract_individual_holes.py
+17. extract_regions_to_svg.py
+18. extract_holes_to_svg.py
+19. extract_all_damage.py
+20. extract_and_fill_damage.py
+21. extract_damage_simplified.py
+
+### 핵심 발견
+✅ **모든 스크립트에 y좌표 정렬 없음** → 16:19 당시 코드에 있었으나 제거됨
+✅ **p33 (lab_b + s-percentile=33)**이 가장 근접
+✅ **min-area=28**일 때 230개로 거의 정확 (원본 229개)
+
+### 최종 근접 파라미터
+- method: lab_b
+- s-percentile: 33
+- min-area: 28
+- 결과: 230개 (원본 229개, +1개 차이)
+- Coverage: 32.91% (원본 32.63%, +0.28%)
+
+### 남은 문제
+- 구멍 위치가 미묘하게 다름 (x422→x239, y1078→y1077)
+- 마스크 생성 로직의 미세한 차이
+- 완벽한 재현은 불가능 (코드 변경 또는 다른 스크립트 사용 가능성)
