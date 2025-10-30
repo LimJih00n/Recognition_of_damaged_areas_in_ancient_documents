@@ -235,20 +235,207 @@ Recognition_of_damaged_areas_in_ancient_documents/
 
 ## 🎨 알고리즘
 
-### 1. LAB 색공간 분석
-- L (밝기), a (빨강-녹색), **b (파랑-노랑)** 채널 사용
-- 베이지색 종이 (b ≥ 138) vs 흰색 구멍 (b < 138) 구분
-- Otsu 자동 임계값 + 수동 조정 가능
+### 1. LAB 색공간 기반 구멍 검출
 
-### 2. 타일 경계 감지
-- 스캔 이미지가 이어지는 부분 자동 판단
-- 4개 변(상하좌우) 중 실제 경계 vs 타일 경계 구분
-- 이어지는 부분은 이미지 끝까지 확장
+**원리:**
+- RGB 대신 LAB 색공간 사용
+  - **L**: 밝기 (0-255)
+  - **a**: 빨강-녹색 축
+  - **b**: 파랑-노랑 축 ⭐ (핵심)
 
-### 3. 2D Bin Packing
-- Shelf-based 알고리즘
-- 큰 조각부터 배치 (First Fit Decreasing)
-- 자동 다중 페이지 생성
+**구멍 vs 종이 구분:**
+```
+베이지색 종이: b ≥ 138 (노란 톤)
+흰색 구멍:    b < 138 (파란 톤, 중성)
+```
+
+**처리 과정:**
+1. **전처리**: BGR → LAB 색공간 변환
+2. **임계값 처리**: b-channel에서 Otsu 자동 임계값 계산
+3. **Morphological 연산**:
+   - Close (20x20 kernel): 내부 작은 구멍 메우기
+   - Open (5x5 kernel): 외부 노이즈 제거
+4. **윤곽선 검출**: `cv2.findContours()`로 구멍 경계 추출
+5. **필터링**: 면적 기준 (min: 50px, max: 2,500,000px)
+
+**해상도 자동 스케일링:**
+```python
+scale_factor = sqrt(current_pixels / reference_pixels)
+scaled_min_area = min_area * scale_factor
+scaled_kernel_size = kernel_size * scale_factor
+```
+- 기준: 7216x5412 (39,052,992 픽셀)
+- 저해상도/고해상도 이미지에 일관된 결과 제공
+
+---
+
+### 2. 타일 경계 자동 감지
+
+**문제점:**
+큰 문서를 여러 타일로 나눠 스캔할 경우:
+- 가장자리 손상이 배경과 연결됨
+- 전체 배경이 "구멍"으로 오검출됨
+
+**해결 방법:**
+
+**Step 1: 문서 마스크 생성**
+```python
+# LAB b-channel threshold로 문서 영역 추출
+doc_mask = b_channel > threshold  # 베이지색 종이
+```
+
+**Step 2: 최대 컨투어 찾기**
+- 가장 큰 연결된 영역 = 문서 영역
+
+**Step 3: 각 변의 특성 판단**
+```python
+margin_threshold = 50  # 픽셀
+
+for edge in [left, top, right, bottom]:
+    distance = edge_to_image_border(edge)
+
+    if distance > margin_threshold:
+        # 실제 문서 경계
+        boundary[edge] = contour_edge
+    else:
+        # 타일 경계 (이어짐)
+        boundary[edge] = image_edge
+```
+
+**결과:**
+- 실제 경계: 윤곽선 그대로 사용
+- 타일 경계: 이미지 끝까지 확장
+- 배경 제외: 경계 밖 영역은 검출에서 제외
+
+---
+
+### 3. 2D Bin Packing (레이아웃 최적화)
+
+**목표:**
+SVG 조각들을 A4/A3 용지에 최소 페이지로 배치
+
+**알고리즘:** Shelf-based Bin Packing
+
+**Step 1: 조각 정렬**
+```python
+pieces.sort(key=lambda p: p.height, reverse=True)
+# 큰 조각부터 배치 (First Fit Decreasing)
+```
+
+**Step 2: Shelf 생성 및 배치**
+```python
+class Shelf:
+    def __init__(self, y, height, width):
+        self.y = y              # Shelf의 y 좌표
+        self.height = height    # 가장 높은 조각 높이
+        self.x_offset = 0       # 현재 x 위치
+        self.width = width      # 남은 너비
+
+for piece in sorted_pieces:
+    # 기존 shelf에 넣을 수 있는지 확인
+    fitted = False
+    for shelf in shelves:
+        if shelf.can_fit(piece):
+            shelf.add(piece)
+            fitted = True
+            break
+
+    # 새 shelf 생성
+    if not fitted:
+        new_shelf = Shelf(current_y, piece.height, page_width)
+        new_shelf.add(piece)
+        shelves.append(new_shelf)
+        current_y += piece.height + spacing
+
+    # 페이지 넘침 확인
+    if current_y > page_height:
+        create_new_page()
+```
+
+**최적화:**
+- 간격: 1.5mm (레이저 커팅 여유)
+- 여백: 10mm (용지 가장자리)
+- 회전 없음 (원본 방향 유지)
+
+**복잡도:**
+- 시간: O(n²) (n = 조각 개수)
+- 공간 효율: ~70-80% (일반적인 bin packing)
+
+---
+
+### 4. SVG 벡터화
+
+**윤곽선 → SVG Path 변환:**
+
+**Step 1: 윤곽선 단순화**
+```python
+epsilon = simplify_factor  # 기본값: 0.1
+approx = cv2.approxPolyDP(contour, epsilon, closed=True)
+# Douglas-Peucker 알고리즘
+```
+
+**Step 2: SVG Path 명령어 생성**
+```python
+path_data = f"M {x0},{y0}"  # MoveTo (시작점)
+for (x, y) in points[1:]:
+    path_data += f" L {x},{y}"  # LineTo
+path_data += " Z"  # ClosePath
+```
+
+**Step 3: 메타데이터 추가**
+```xml
+<metadata>
+    <hole_id>156</hole_id>
+    <bbox>x=1234, y=567, w=118, h=268</bbox>
+    <area>31624</area>
+    <original_position>center: (1293, 701)</original_position>
+</metadata>
+```
+
+**좌표계:**
+- 원본 이미지 좌표 유지 (픽셀 단위)
+- DPI 300 기준 물리적 크기 계산 (mm)
+- ViewBox로 스케일링 정보 저장
+
+---
+
+### 5. 스케일 변환 (레이저 커팅용)
+
+**SVG Transform 적용:**
+
+```python
+# 원본 크기
+original_width = piece.width   # mm
+original_height = piece.height
+
+# 스케일 적용
+scaled_width = original_width * scale_factor
+scaled_height = original_height * scale_factor
+
+# SVG transform 계산
+scale_x = scaled_width / viewBox_width
+scale_y = scaled_height / viewBox_height
+
+transform = f"translate({x}, {y}) scale({scale_x}, {scale_y})"
+```
+
+**중심점 기준 스케일링:**
+```python
+center_x = x + width / 2
+center_y = y + height / 2
+
+for point in path_points:
+    dx = point.x - center_x
+    dy = point.y - center_y
+
+    scaled_point.x = center_x + dx * scale
+    scaled_point.y = center_y + dy * scale
+```
+
+**개별 vs 전체 스케일:**
+- 전체 스케일: 모든 조각에 동일 비율 적용
+- 개별 스케일: JSON 설정 파일에서 조각별 비율 지정
+- 우선순위: 개별 > 전체
 
 ---
 
